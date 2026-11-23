@@ -1,6 +1,6 @@
 name: astrbot_plugin_ncm_player
-display_name: 网易云点歌
-desc: 网易云点歌，支持扫码/短信与网页 Cookie、多级音源回退、内置 API 管理及 Docker/Linux/Windows 显式路径映射
-version: v1.5.1
+display_name: TZYC 点歌（网易云）
+desc: 网易云点歌的迁移过渡版，保留登录、多级音源回退、内置 API 和跨系统发送；后续重构将在本仓库进行
+version: v1.5.2
 author: TZYCENG
-repo: https://github.com/TZYCeng/astrbot_plugin_ncm_player
+repo: https://github.com/TZYCeng/astrbot_plugin_tzyc_music

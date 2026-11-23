@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v1.5.2] - 2026-11-23 - 仓库迁移过渡版
+
+- 从[旧仓库](https://github.com/TZYCeng/astrbot_plugin_ncm_player)迁移至[新仓库](https://github.com/TZYCeng/astrbot_plugin_tzyc_music)，保留 Git 历史和 v1.5.1 点歌功能。
+- 仅更新版本、展示名称、仓库地址和迁移说明；过渡期保留 AstrBot 插件内部标识、配置和数据目录名。
+- 计划于 2026–2027 学年寒假启动重构，逐步补充更多音乐源、自部署方案及点歌菜单自定义。当前不包含这些新功能；问题可提交到[新仓库 Issues](https://github.com/TZYCeng/astrbot_plugin_tzyc_music/issues)。
+
 ## [v1.5.1] - 2026-10-25 - 修复 Docker 跨系统路径转换
 
 * **Linux Docker 路径修复**：`guest_path_style=auto` 不再将 POSIX 绝对路径推断成 Windows；未配置映射时保留原路径，避免错误生成 `C:\AstrBot\...`。
