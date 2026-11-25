@@ -473,6 +473,89 @@ class NetEaseAPI:
 
     # ---------- 热评 / 歌词 ----------
 
+    # ---------- 链接解析 ----------
+
+    async def fetch_song_detail(self, song_id: int) -> Song | None:
+        """按编号取单曲详情（歌名 / 歌手 / 专辑 / 时长 / 封面）。"""
+        try:
+            result = await self._get(self.DETAIL_URL, params={"ids": f"[{song_id}]"})
+            songs = result.get("songs") or []
+            if not songs:
+                return None
+            raw = songs[0]
+            album = raw.get("album") or {}
+            return Song(
+                id=raw.get("id", song_id),
+                name=raw.get("name", "未知歌曲"),
+                artists="、".join(
+                    a.get("name", "")
+                    for a in (raw.get("artists") or [])
+                    if a.get("name")
+                ),
+                album=album.get("name", ""),
+                duration=raw.get("duration", 0),
+                pic_url=album.get("picUrl", ""),
+            )
+        except Exception as e:
+            logger.warning(f"[ncm_player] 获取歌曲 {song_id} 详情失败: {e}")
+            return None
+
+    async def fetch_playlist(
+        self, playlist_id: int, limit: int = 20
+    ) -> tuple[str, list[Song]]:
+        """取歌单：返回 (歌单名, 曲目列表)。
+
+        网易云的歌单详情接口只保证给 ``trackIds``（曲目编号列表），曲目本身
+        要再走一次批量详情接口才能拿到歌名和封面。
+        """
+        name = ""
+        ids: list[int] = []
+        try:
+            result = await self._get(
+                "https://music.163.com/api/v6/playlist/detail",
+                params={"id": playlist_id},
+            )
+            playlist = result.get("playlist") or {}
+            name = playlist.get("name", "")
+            for item in playlist.get("trackIds") or []:
+                ident = item.get("id")
+                if isinstance(ident, int) and ident > 0:
+                    ids.append(ident)
+                if len(ids) >= limit:
+                    break
+        except Exception as e:
+            logger.warning(f"[ncm_player] 获取歌单 {playlist_id} 失败: {e}")
+            return name, []
+
+        if not ids:
+            return name, []
+        try:
+            detail = await self._get(
+                self.DETAIL_URL,
+                params={"ids": "[" + ",".join(str(i) for i in ids) + "]"},
+            )
+            songs = []
+            for raw in detail.get("songs") or []:
+                album = raw.get("album") or {}
+                songs.append(
+                    Song(
+                        id=raw.get("id", 0),
+                        name=raw.get("name", "未知歌曲"),
+                        artists="、".join(
+                            a.get("name", "")
+                            for a in (raw.get("artists") or [])
+                            if a.get("name")
+                        ),
+                        album=album.get("name", ""),
+                        duration=raw.get("duration", 0),
+                        pic_url=album.get("picUrl", ""),
+                    )
+                )
+            return name, songs
+        except Exception as e:
+            logger.warning(f"[ncm_player] 获取歌单 {playlist_id} 曲目失败: {e}")
+            return name, []
+
     async def fetch_comment(self, song_id: int) -> Comment | None:
         """取一条最热门评论"""
         try:

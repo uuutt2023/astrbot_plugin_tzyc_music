@@ -1,5 +1,24 @@
 # 更新日志 (CHANGELOG)
 
+## [v1.6.0] - 网易云链接自动解析与 Typst 卡片排版
+
+* **🔗 网易云链接自动解析**：新增 `core/ncm_parser.py`，消息里出现网易云音乐链接时自动解析并发送卡片图。
+  * 支持单曲（`/song`、`/m/song`）与歌单（`/playlist`、`/m/playlist`），兼容 `m.` / `y.` 移动端域名与 `#/` 哈希路由短链，以及省略协议的 `//host/...` 和裸域名写法。
+  * 主机、端口、路径、编号都做严格校验：伪造域名（`evil.com/music.163.com`）、主机名前缀攻击（`music.163.com.evil.net`）、带凭据的 URL、非 80/443 端口、非法编号（`0` / `01` / 非数字）一律不认；只解析官方域名，不解析第三方镜像站。
+  * 只出图、**不自动播放**：解析后引导用户用「点歌」指令，避免一条分享链接占掉播放队列。带链接的消息不再触发关键词监听与 LLM 搜索工具，因此不会重复响应。
+  * 新增配置 `auto_parse_enabled`（默认开启），误触发多时可关闭。
+  * 歌单走 `playlist/detail` 取 `trackIds`，再用批量 `song/detail` 补齐歌名与封面。
+* **🖼️ Typst 卡片排版**：选歌、播放、热评三张卡改由 Typst 排版，文字基线、行距、圆角和渐变交给排版引擎计算。
+  * CD 光盘与圆形头像仍由 Pillow 画成透明 PNG 素材交给 Typst 摆位，CD 美学完整保留。
+  * **Typst 优先、Pillow 兜底**：缺依赖、缺中文字体、编译失败或超时都会自动回落 Pillow，功能与外观都不中断。
+  * 排版跑在独立子进程并带超时回收，模板写错或排版卡住不会拖垮 AstrBot。
+  * 字体解析按「受管理目录 → 系统字体 → 下载 Noto Sans SC」三级兜底，找不到中文字体时明确报错并回落 Pillow。
+  * 新增配置 `typst_enabled` / `typst_ppi` / `typst_timeout` / `typst_quality`。
+* **🐛 修复 Typst 卡片缓存不失效**：缓存键原先只含歌名与关键词，改了模板版式或换了封面后仍会复用旧图，卡片停留在旧版式上。现在缓存键额外包含模板内容与图片素材的指纹。
+* **开源来源与许可**：Typst 排版方案移植自 [astrbot_plugin_blue_protocol](https://github.com/uuutt2023/astrbot_plugin_blue_protocol)（MIT，Copyright (c) 2026 uuutt），移植部分保留原版权声明。链接自动解析的*行为*参考 [astrbot_plugin_media_parser](https://github.com/drdon1234/astrbot_plugin_media_parser)（AGPL-3.0），但**解析层为本插件独立实现，未复制其代码**，本插件仍为 MIT。
+* **依赖与版本**：`requirements.txt` 增加 `typst>=0.13`；插件版本升至 1.6.0，AstrBot 内部插件标识 `astrbot_plugin_ncm_player` 与数据目录名保持不变，已有安装无需迁移。
+* **验证**：新增链接解析（15 项）、自动解析与 Typst 回落（12 项）、Typst 端到端渲染（7 项）测试，单测共 66 项通过、1 项真实 Release 下载测试跳过；另以真实网易云接口验证歌曲、歌单、热评与三张卡的完整链路。
+
 ## [v1.5.2] - 2026-11-23 - 仓库迁移过渡版
 
 - 从[旧仓库](https://github.com/TZYCeng/astrbot_plugin_ncm_player)迁移至[新仓库](https://github.com/TZYCeng/astrbot_plugin_tzyc_music)，保留 Git 历史和 v1.5.1 点歌功能。

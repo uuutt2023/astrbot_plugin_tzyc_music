@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, EventMessageType, filter
 from astrbot.api.message_components import Image, Node, Nodes, Plain
 from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.core.utils.session_waiter import SessionController, session_waiter
@@ -21,9 +21,11 @@ from .core.ncm_api import (
     Song,
     normalize_quality,
 )
+from .core.ncm_parser import contains_link, extract_links
 from .core.ncm_server import RELEASE_TAG, EmbeddedNcmServer
 from .core.renderer import CardRenderer
 from .core.sender import SongSender
+from .core.typst_cards import TypstCardRenderer
 
 PENDING_EXPIRE = 300  # 选歌缓存有效期（秒）
 LYRICS_PER_NODE = 30  # 合并转发每条消息的歌词行数
@@ -57,8 +59,8 @@ def _mask_name(s: str) -> str:
 @register(
     "astrbot_plugin_ncm_player",
     "Kimi",
-    "网易云点歌：关键词/自然语言点歌、语音/文件/卡片发送、扫码/短信登录、内置 API、Docker/Linux/Windows 显式路径映射",
-    "1.5.2",
+    "网易云点歌：关键词/自然语言点歌、网易云链接自动解析、Typst 排版卡片、语音/文件/卡片发送、扫码/短信登录、内置 API、Docker/Linux/Windows 显式路径映射",
+    "1.6.0",
 )
 class NcmPlayerPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -89,6 +91,7 @@ class NcmPlayerPlugin(Star):
             outer_enabled=self.cfg.get("ncm_outer_enabled", True),
         )
         self.renderer = CardRenderer(self.cache_dir)
+        self.typst = TypstCardRenderer(self.data_dir)
         self.sender = SongSender(self.cfg)
         # unified_msg_origin -> (时间戳, 候选歌曲)
         self.pending: dict[str, tuple[float, list[Song]]] = {}
@@ -171,6 +174,75 @@ class NcmPlayerPlugin(Star):
 
     # ---------- 内部流程 ----------
 
+    # ---------- 渲染分发（Typst 优先，Pillow 兜底） ----------
+
+    def _typst_enabled(self) -> bool:
+        return bool(self.cfg.get("typst_enabled", True))
+
+    def _typst_ppi(self) -> int:
+        return max(72, min(300, int(self.cfg.get("typst_ppi", 144))))
+
+    def _typst_timeout(self) -> float:
+        return max(5.0, float(self.cfg.get("typst_timeout", 60)))
+
+    def _typst_quality(self) -> int:
+        return max(40, min(95, int(self.cfg.get("typst_quality", 88))))
+
+    async def _render_selection_card(
+        self, songs: list[Song], covers: list[bytes | None], keyword: str
+    ) -> str:
+        """渲染选歌列表：Typst 优先，出错回落 Pillow。"""
+        if self._typst_enabled() and self.typst.available():
+            try:
+                return await self.typst.render_selection(
+                    songs,
+                    covers,
+                    keyword,
+                    ppi=self._typst_ppi(),
+                    timeout=self._typst_timeout(),
+                    quality=self._typst_quality(),
+                )
+            except Exception as e:
+                logger.warning(f"[ncm_player] Typst 选歌图渲染失败，改用 Pillow: {e}")
+        return self.renderer.render_selection(songs, covers, keyword)
+
+    async def _render_playing_card(
+        self, song: Song, cover: bytes | None, quality: str, vip: str
+    ) -> str:
+        """渲染播放卡片：Typst 优先，出错回落 Pillow。"""
+        if self._typst_enabled() and self.typst.available():
+            try:
+                return await self.typst.render_playing(
+                    song,
+                    cover,
+                    quality,
+                    vip,
+                    ppi=self._typst_ppi(),
+                    timeout=self._typst_timeout(),
+                    quality_jpeg=self._typst_quality(),
+                )
+            except Exception as e:
+                logger.warning(f"[ncm_player] Typst 播放卡渲染失败，改用 Pillow: {e}")
+        return self.renderer.render_playing(song, cover, quality, vip)
+
+    async def _render_comment_card(
+        self, comment, song: Song, avatar: bytes | None
+    ) -> str:
+        """渲染热评卡片：Typst 优先，出错回落 Pillow。"""
+        if self._typst_enabled() and self.typst.available():
+            try:
+                return await self.typst.render_comment(
+                    comment,
+                    song,
+                    avatar,
+                    ppi=self._typst_ppi(),
+                    timeout=self._typst_timeout(),
+                    quality=self._typst_quality(),
+                )
+            except Exception as e:
+                logger.warning(f"[ncm_player] Typst 热评卡渲染失败，改用 Pillow: {e}")
+        return self.renderer.render_comment(comment, song, avatar)
+
     @staticmethod
     def _pend_key(event: AstrMessageEvent) -> str:
         """选歌状态键：同一群聊中不同用户各自独立，避免 A 选歌时 B 的回复串台"""
@@ -210,7 +282,7 @@ class NcmPlayerPlugin(Star):
 
         covers = await asyncio.gather(*[self.api.fetch_bytes(s.pic_url) for s in songs])
         try:
-            img_path = self.renderer.render_selection(songs, list(covers), keyword)
+            img_path = await self._render_selection_card(songs, list(covers), keyword)
             await event.send(event.chain_result([Image.fromFileSystem(img_path)]))
         except Exception as e:
             logger.error(f"[ncm_player] 选歌图渲染失败，改用文本列表: {e}")
@@ -265,7 +337,7 @@ class NcmPlayerPlugin(Star):
             if not comment:
                 return
             avatar = await self.api.fetch_bytes(comment.avatar_url)
-            path = self.renderer.render_comment(comment, song, avatar)
+            path = await self._render_comment_card(comment, song, avatar)
             await event.send(event.chain_result([Image.fromFileSystem(path)]))
         except Exception as e:
             logger.warning(f"[ncm_player] 热评卡片发送失败: {e}")
@@ -360,7 +432,7 @@ class NcmPlayerPlugin(Star):
                             else "mirror"
                         )
                     cover = await self.api.fetch_bytes(song.pic_url)
-                    card = self.renderer.render_playing(
+                    card = await self._render_playing_card(
                         song, cover, play.quality_str, vip_mark
                     )
                     await event.send(event.chain_result([Image.fromFileSystem(card)]))
@@ -398,6 +470,8 @@ class NcmPlayerPlugin(Star):
         Args:
             keyword(string): 搜索关键词，建议带上歌手提高准确度，如"晴天 周杰伦"
         """
+        if contains_link(event.message_str or ""):
+            return "用户发来的是网易云链接，已由自动解析处理，无需再搜索。"
         songs = await self._search_and_render(event, keyword)
         if not songs:
             return "搜索失败或没有结果，请换个关键词"
@@ -446,6 +520,85 @@ class NcmPlayerPlugin(Star):
         result = await self._play(event, song)
         return f"已完成点歌：{result}"
 
+    # ---------- 自动解析（网易云链接） ----------
+
+    async def _handle_ncm_link(self, event: AstrMessageEvent, link) -> bool:
+        """解析一条网易云链接并出图。返回是否真的处理了。"""
+        if link.kind == "song":
+            song = await self.api.fetch_song_detail(int(link.ident))
+            if not song:
+                await event.send(
+                    event.plain_result("没能获取这首歌的信息，链接可能已失效。")
+                )
+                return True
+            cover = await self.api.fetch_bytes(song.pic_url)
+            try:
+                card = await self._render_playing_card(song, cover, "解析", "")
+            except Exception as e:
+                logger.warning(f"[ncm_player] 链接播放卡渲染失败: {e}")
+                await event.send(
+                    event.plain_result(
+                        f"《{song.name}》- {song.artists}\n{song.page_url}"
+                    )
+                )
+                return True
+            await event.send(event.chain_result([Image.fromFileSystem(card)]))
+            await event.send(
+                event.plain_result(
+                    f"《{song.name}》- {song.artists}\n{song.page_url}\n发送「点歌 {song.name}」可直接播放"
+                )
+            )
+            return True
+
+        if link.kind == "playlist":
+            name, songs = await self.api.fetch_playlist(
+                int(link.ident), limit=int(self.cfg.get("search_limit", 5))
+            )
+            if not songs:
+                await event.send(
+                    event.plain_result("没能获取这个歌单的内容，链接可能已失效。")
+                )
+                return True
+            covers = await asyncio.gather(
+                *[self.api.fetch_bytes(s.pic_url) for s in songs]
+            )
+            try:
+                card = await self._render_selection_card(
+                    songs, list(covers), name or "歌单"
+                )
+            except Exception as e:
+                logger.warning(f"[ncm_player] 歌单卡片渲染失败: {e}")
+                await event.send(event.plain_result("歌单卡片渲染失败，已跳过。"))
+                return True
+            await event.send(event.chain_result([Image.fromFileSystem(card)]))
+            return True
+
+        return False
+
+    @filter.event_message_type(EventMessageType.ALL)
+    async def auto_parse(self, event: AstrMessageEvent):
+        """自动解析消息里的网易云链接，渲染成卡片发回去。
+
+        行为参考 astrbot_plugin_media_parser（AGPL-3.0）的「监听所有消息 →
+        找链接 → 解析 → 出图」，但解析层是本插件自己写的（见 core/ncm_parser.py）。
+
+        这里只做**识别与出图**，不代替点歌：解析完仍然引导用户用「点歌」指令播放，
+        免得一条链接就把用户的播放队列占了。
+        """
+        if not self.cfg.get("auto_parse_enabled", True):
+            return
+        raw = (event.message_str or "").strip()
+        if not raw or raw.startswith("/"):
+            return  # 指令交给对应 command 处理
+        links = extract_links(raw)
+        if not links:
+            return
+        event.stop_event()
+        try:
+            await self._handle_ncm_link(event, links[0])
+        except Exception as e:
+            logger.warning(f"[ncm_player] 链接解析失败: {e}")
+
     # ---------- 关键词监听（不依赖 LLM） ----------
 
     @filter.regex(LISTEN_PATTERN)
@@ -458,6 +611,8 @@ class NcmPlayerPlugin(Star):
             return  # 指令交给对应 command 处理
         # 去掉 @ 提及组件
         text = re.sub(r"\[At[^\]]*\]", "", raw).strip()
+        if contains_link(text):
+            return  # 消息里有网易云链接，交给自动解析处理，避免重复响应
         m = re.search(LISTEN_PATTERN, text)
         if not m or m.start() > 6:
             return  # 触发词位置太靠后，多半是闲聊而非点歌

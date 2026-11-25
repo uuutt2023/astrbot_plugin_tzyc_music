@@ -43,6 +43,10 @@ class Event:
 
     def __init__(self):
         self.messages = []
+        self.stopped = False
+
+    def stop_event(self):
+        self.stopped = True
 
     def plain_result(self, text):
         return text
@@ -87,8 +91,10 @@ _module(
         permission_type=_decorator,
         llm_tool=_decorator,
         regex=_decorator,
+        event_message_type=_decorator,
         PermissionType=types.SimpleNamespace(ADMIN="admin"),
     ),
+    EventMessageType=types.SimpleNamespace(ALL="all"),
 )
 _module(
     "astrbot.api.message_components",
@@ -115,6 +121,10 @@ _module("_ncm_test_plugin", __path__=[str(Path(__file__).resolve().parents[1])])
 
 auth = importlib.import_module("_ncm_test_plugin.core.auth")
 api_module = importlib.import_module("_ncm_test_plugin.core.ncm_api")
+parser_module = importlib.import_module("_ncm_test_plugin.core.ncm_parser")
+renderer_module = importlib.import_module("_ncm_test_plugin.core.renderer")
+typst_cards_module = importlib.import_module("_ncm_test_plugin.core.typst_cards")
+typst_render_module = importlib.import_module("_ncm_test_plugin.core.typst.render")
 server_module = importlib.import_module("_ncm_test_plugin.core.ncm_server")
 main_module = importlib.import_module("_ncm_test_plugin.main")
 

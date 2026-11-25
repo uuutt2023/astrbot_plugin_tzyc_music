@@ -1,6 +1,6 @@
 name: astrbot_plugin_ncm_player
 display_name: TZYC 点歌（网易云）
-desc: 网易云点歌的迁移过渡版，保留登录、多级音源回退、内置 API 和跨系统发送；后续重构将在本仓库进行
-version: v1.5.2
+desc: 网易云点歌：关键词/自然语言点歌、网易云链接自动解析、Typst 排版卡片、语音/文件/卡片发送、扫码/短信登录、内置 API、Docker/Linux/Windows 显式路径映射
+version: v1.6.0
 author: TZYCENG
 repo: https://github.com/TZYCeng/astrbot_plugin_tzyc_music

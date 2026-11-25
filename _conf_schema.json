@@ -141,6 +141,46 @@
         "type": "bool",
         "default": true
     },
+    "auto_parse_enabled": {
+        "description": "自动解析网易云链接",
+        "hint": "消息里出现网易云音乐歌曲/歌单链接时，自动解析并发送对应卡片图（不自动播放）。只识别 music.163.com 官方链接。误触发较多时可关闭",
+        "type": "bool",
+        "default": true
+    },
+    "typst_enabled": {
+        "description": "使用 Typst 排版卡片",
+        "hint": "开启后用 Typst 排版选歌/播放/热评三张卡（文字基线更整齐）；Typst 不可用或排版失败时自动回落 Pillow，CD 美学不变。关闭则始终使用 Pillow",
+        "type": "bool",
+        "default": true
+    },
+    "typst_ppi": {
+        "description": "Typst 导出密度（PPI）",
+        "hint": "越高越清晰、体积越大。144 约等于原卡片像素尺寸；96 更省流量",
+        "type": "int",
+        "slider": {
+            "min": 72,
+            "max": 300,
+            "step": 12
+        },
+        "default": 144
+    },
+    "typst_timeout": {
+        "description": "Typst 排版超时（秒）",
+        "hint": "单张卡片的排版时间上限，超时视为失败并回落 Pillow",
+        "type": "int",
+        "default": 60
+    },
+    "typst_quality": {
+        "description": "卡片图片质量",
+        "hint": "JPEG 压缩质量，数值越大越清晰、体积越大",
+        "type": "int",
+        "slider": {
+            "min": 40,
+            "max": 95,
+            "step": 1
+        },
+        "default": 88
+    },
     "send_play_card": {
         "description": "发送播放卡片图",
         "hint": "点歌成功时发送 CD 风格的封面卡片图",

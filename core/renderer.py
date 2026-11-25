@@ -256,6 +256,56 @@ def _paste_shadow(
     base.alpha_composite(fg, (x, y))
 
 
+def disc_png_bytes(cover_bytes: bytes | None, size: int) -> bytes:
+    """把封面渲染成 CD 光盘并导出成 PNG 字节（透明底）。
+
+    Typst 排版路径复用这个光盘素材：CD 是这个插件的视觉签名，用 Pillow 画出来
+    比在 Typst 里手搓玻璃盘心省事得多，Typst 只负责把它摆到版心里。
+    """
+    disc = _make_disc(cover_bytes, size)
+    buf = BytesIO()
+    disc.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def disc_with_shadow_png_bytes(
+    cover_bytes: bytes | None, size: int
+) -> tuple[bytes, int]:
+    """带柔和投影的 CD 光盘素材，返回 (PNG 字节, 画布边距)。
+
+    画布边长是 ``size + 2 * pad``，盘面居中，投影落在盘面下方。
+    Typst 那边按「左上角 - 边距」摆位即可，和 Pillow 版视觉一致。
+    """
+    pad = max(8, size // 16)
+    canvas_size = size + pad * 2
+    disc = _make_disc(cover_bytes, size)
+    canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    # 投影：模糊的深色椭圆，位置和 _paste_shadow 一致
+    blur = max(6, size // 20)
+    shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=60)
+    shadow.paste((40, 45, 60, 255), (0, 0), mask)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(blur))
+    canvas.alpha_composite(shadow, (pad, pad + blur // 2))
+    canvas.alpha_composite(disc, (pad, pad))
+    buf = BytesIO()
+    canvas.save(buf, "PNG")
+    return buf.getvalue(), pad
+
+
+def avatar_png_bytes(avatar_bytes: bytes | None, size: int) -> bytes:
+    """把头像裁成圆形并导出成 PNG 字节（透明底）。"""
+    img = _load_square(avatar_bytes, size).convert("RGBA")
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(img, (0, 0), mask)
+    buf = BytesIO()
+    out.save(buf, "PNG")
+    return buf.getvalue()
+
+
 class CardRenderer:
     def __init__(self, out_dir: Path):
         self.out_dir = Path(out_dir)

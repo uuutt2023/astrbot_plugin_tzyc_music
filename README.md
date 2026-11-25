@@ -2,12 +2,12 @@
 
 为 AstrBot 设计的点歌插件；当前可用版本仍以网易云音乐为主，延续旧版的账号登录、音源回退和跨系统发送能力。
 
-[![Version](https://img.shields.io/badge/version-v1.5.2-blue.svg)](https://github.com/TZYCeng/astrbot_plugin_tzyc_music/releases/tag/v1.5.2)
+[![Version](https://img.shields.io/badge/version-v1.6.0-blue.svg)](https://github.com/TZYCeng/astrbot_plugin_tzyc_music/releases/tag/v1.6.0)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![AstrBot](https://img.shields.io/badge/AstrBot-4.9+-orange.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-> **当前状态：v1.5.2 迁移过渡版，可以继续使用。** 本仓库保留了[旧仓库](https://github.com/TZYCeng/astrbot_plugin_ncm_player)的 Git 历史和 v1.5.1 功能。仓库改名是为了与其他同名点歌插件区分；暂不改 AstrBot 内部插件标识、配置及数据目录，已有安装无需为了迁移而卸载或清空配置，也不要同时安装两份。
+> **当前状态：v1.6.0，可以继续使用。** 本仓库保留了[旧仓库](https://github.com/TZYCeng/astrbot_plugin_ncm_player)的 Git 历史和 v1.5.1 功能。仓库改名是为了与其他同名点歌插件区分；暂不改 AstrBot 内部插件标识、配置及数据目录，已有安装无需为了迁移而卸载或清空配置，也不要同时安装两份。
 >
 > **计划于 2026–2027 学年寒假启动重构**，方向是接入更多音乐源、补充自部署方案与部署文档，以及让点歌菜单的样式和展示内容可自定义。这些功能尚未上线；近期因学业繁忙，问题可先提交到[新仓库 Issues](https://github.com/TZYCeng/astrbot_plugin_tzyc_music/issues)，回复和处理可能较慢。
 
@@ -17,6 +17,8 @@
 - 内置 API、外部 API、网页音源、Meting 镜像和官方外链独立开关、多层回退。
 - 标准至母带逐级降质，显示实际返回音质，识别试听；下载失败继续尝试其他来源。
 - CD 风选歌/播放卡片、热评卡片和歌词合并转发。
+- 网易云链接自动解析：消息里出现歌曲/歌单链接时，自动出卡片图。
+- 卡片改用 Typst 排版（文字基线更整齐），Typst 不可用时自动回落 Pillow，CD 美学不变。
 
 ## v1.5.1 更新
 
@@ -24,7 +26,7 @@
 
 ## 安装与配置
 
-在 AstrBot WebUI 安装本仓库，或将代码放入 `data/plugins/` 后重载插件。依赖为 `aiohttp`、`Pillow`，由 AstrBot 根据 `requirements.txt` 安装。
+在 AstrBot WebUI 安装本仓库，或将代码放入 `data/plugins/` 后重载插件。依赖为 `aiohttp`、`Pillow`、`typst`，由 AstrBot 根据 `requirements.txt` 安装。其中 `typst` 只用于卡片排版，没装成功也不影响点歌功能——插件会自动回落到 Pillow 渲染。
 
 ### 内置或外部 API
 
@@ -69,6 +71,33 @@
 
 删除/重装仅管理插件创建的服务，保留账号 Cookie、点歌缓存和外部 API。进行中的登录会取消，防止重装前的旧响应覆盖账号。重装失败可用诊断命令查看原因，其他启用的音源继续参与回退。
 
+## 链接自动解析
+
+消息里出现网易云音乐链接时，插件会自动解析并把卡片图发回：
+
+```text
+我：https://music.163.com/song?id=347230
+机器人：（播放卡片图 + 歌曲信息）
+我：https://music.163.com/#/playlist?id=3778678
+机器人：（歌单卡片图）
+```
+
+- 只识别 `music.163.com` 官方链接（含 `m.` / `y.` 移动端与 `#/` 哈希路由短链）；
+- 支持单曲（`/song`、`/m/song`）和歌单（`/playlist`、`/m/playlist`），专辑和 mv 暂不支持；
+- 解析只出图、**不自动播放**，避免一条分享链接就占了播放队列；想听再用「点歌」指令；
+- 误触发多时可用 `auto_parse_enabled` 关闭。
+
+## Typst 卡片排版
+
+v1.6.0 起，选歌 / 播放 / 热评三张卡改由 Typst 排版：文字基线、行距、圆角和渐变交给排版引擎算，比 Pillow 手搓的更整齐。
+
+- CD 光盘和圆形头像仍由 Pillow 画成透明 PNG 素材，Typst 只负责摆位——CD 是这个插件的视觉签名，手搓玻璃盘心不划算；
+- Typst 缺依赖、缺中文字体或排版超时时，自动回落 Pillow，**功能和外观都不会中断**；
+- 排版跑在独立子进程里，模板写错或排版卡住只会让子进程退出，不会拖垮 AstrBot；
+- 缓存键包含模板和素材指纹，改了版式或换了封面，旧图不会被复用。
+
+排版方案移植自 [astrbot_plugin_blue_protocol](https://github.com/uuutt2023/astrbot_plugin_blue_protocol)（MIT）。
+
 ## 音源与音质链路
 
 1. **API 登录账号**：内置 API → 外部 API，各服务从所选档位向下降质。
@@ -106,6 +135,11 @@ API 账号与网页账号的会员信息独立，VIP 查询异常不覆盖已确
 | `send_mode` | `auto` | 语音优先降级，或 `voice` / `file` / `card` 及下划线组合 |
 | `send_play_card` / `send_comment_card` / `send_lyrics_forward` | `true` | 播放卡片、热评、歌词开关 |
 | `enable_keyword_listen` | `true` | 关键词点歌开关 |
+| `auto_parse_enabled` | `true` | 网易云链接自动解析开关 |
+| `typst_enabled` | `true` | 用 Typst 排版卡片，失败自动回落 Pillow |
+| `typst_ppi` | `144` | Typst 导出密度，越高越清晰、体积越大 |
+| `typst_timeout` | `60` | 单张卡片排版超时秒数，超时回落 Pillow |
+| `typst_quality` | `88` | 卡片图片 JPEG 质量 |
 | `send_timeout` | `20` | 单种发送方式的超时秒数 |
 | `download_timeout` | `20` | 下载停滞超时秒数，失败重试一次 |
 | `download_max_mb` | `40` | 单个音源下载上限，超限后降质/换源；高音质通常需调大 |
@@ -171,7 +205,7 @@ python -m ruff format --check .
 python -m unittest discover -s tests -t . -v
 ```
 
-测试用本地 aiohttp 服务覆盖真实 HTTP 请求、登录 Cookie、双账号、缓存隔离、下载回退和生命周期；仅 AstrBot 宿主接口使用替身。可额外设置 `NCM_RELEASE_SMOKE=1` 后运行 `python -m unittest tests.test_release_smoke -v`，验证真实 Release 下载、启动、重装及删除；该测试无需真实账号。
+测试用本地 aiohttp 服务覆盖真实 HTTP 请求、登录 Cookie、双账号、缓存隔离、下载回退和生命周期；仅 AstrBot 宿主接口使用替身。链接解析（20 项）、自动解析与 Typst 回落（12 项）、Typst 端到端渲染（7 项）也覆盖在内；未安装 `typst` 时 Typst 渲染组自动跳过。可额外设置 `NCM_RELEASE_SMOKE=1` 后运行 `python -m unittest tests.test_release_smoke -v`，验证真实 Release 下载、启动、重装及删除；该测试无需真实账号。
 
 ## v1.5.0 历史瘦身
 
@@ -179,6 +213,8 @@ python -m unittest discover -s tests -t . -v
 ## 开源致谢与许可
 
 - 本插件采用 [MIT](LICENSE)。
+- 卡片排版方案移植自 [astrbot_plugin_blue_protocol](https://github.com/uuutt2023/astrbot_plugin_blue_protocol)（MIT，Copyright (c) 2026 uuutt）：Typst 隔离编译进程、字体解析和本地排版部分直接移植，模板与卡片样式为本插件自行编写。移植部分保留原版权声明。
+- 网易云链接自动解析的行为参考 [astrbot_plugin_media_parser](https://github.com/drdon1234/astrbot_plugin_media_parser)（AGPL-3.0）。**本插件的解析层为独立实现，未复制其任何代码**，因此本插件仍为 MIT；如需使用该插件，请遵守它的 AGPL-3.0 条款。
 - 内置服务下载自 [NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)，固定版本 [v4.40.1](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/releases/tag/v4.40.1)。本次依据其公开接口独立实现客户端和进程管理；仓库不打包其二进制。
 - 上游 [v4.40.1/LICENSE](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/blob/v4.40.1/LICENSE) 原文如下：
 
