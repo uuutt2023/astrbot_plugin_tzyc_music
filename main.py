@@ -8,10 +8,19 @@ import uuid
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, EventMessageType, filter
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Node, Nodes, Plain
 from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.core.utils.session_waiter import SessionController, session_waiter
+
+# EventMessageType 不在 astrbot.api.event 的导出列表里（那里只有
+# AstrMessageEvent / MessageChain 等 6 个名字），它在官方 filter 子包里。
+# 不同 AstrBot 版本把 filter 放在不同位置，这里按优先级回退，
+# 保证插件在老版本和新版本上都能加载。
+try:
+    from astrbot.api.event.filter import EventMessageType
+except ImportError:  # pragma: no cover - 兼容更早/更晚的 AstrBot
+    from astrbot.core.star.filter.event_message_type import EventMessageType
 
 from .core.auth import cookie_keys, has_music_u, normalize_cookie
 from .core.ncm_api import (

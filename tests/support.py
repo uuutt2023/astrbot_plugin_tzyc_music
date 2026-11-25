@@ -83,19 +83,33 @@ class StarTools:
 
 _module("astrbot")
 _module("astrbot.api", logger=logging.getLogger("ncm-tests"), AstrBotConfig=Config)
-_module(
+# 真实 AstrBot 的 astrbot.api.event 只导出这 6 个名字；
+# filter 是子模块（from astrbot.api.event import filter 可用），
+# EventMessageType 只在 astrbot.api.event.filter 里，不在 astrbot.api.event 里。
+# 这里照搬真实结构，避免插件写出「宿主其实不导出」的导入而不自知。
+_astbot_api_event = _module(
     "astrbot.api.event",
     AstrMessageEvent=Event,
-    filter=types.SimpleNamespace(
-        command=_decorator,
-        permission_type=_decorator,
-        llm_tool=_decorator,
-        regex=_decorator,
-        event_message_type=_decorator,
-        PermissionType=types.SimpleNamespace(ADMIN="admin"),
-    ),
+    __all__=[
+        "AstrMessageEvent",
+        "CommandResult",
+        "EventResultType",
+        "MessageChain",
+        "MessageEventResult",
+        "ResultContentType",
+    ],
+)
+_module(
+    "astrbot.api.event.filter",
+    command=_decorator,
+    permission_type=_decorator,
+    llm_tool=_decorator,
+    regex=_decorator,
+    event_message_type=_decorator,
+    PermissionType=types.SimpleNamespace(ADMIN="admin"),
     EventMessageType=types.SimpleNamespace(ALL="all"),
 )
+_astbot_api_event.filter = sys.modules["astrbot.api.event.filter"]
 _module(
     "astrbot.api.message_components",
     **dict.fromkeys(

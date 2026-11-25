@@ -17,7 +17,9 @@
 * **🐛 修复 Typst 卡片缓存不失效**：缓存键原先只含歌名与关键词，改了模板版式或换了封面后仍会复用旧图，卡片停留在旧版式上。现在缓存键额外包含模板内容与图片素材的指纹。
 * **开源来源与许可**：Typst 排版方案移植自 [astrbot_plugin_blue_protocol](https://github.com/uuutt2023/astrbot_plugin_blue_protocol)（MIT，Copyright (c) 2026 uuutt），移植部分保留原版权声明。链接自动解析的*行为*参考 [astrbot_plugin_media_parser](https://github.com/drdon1234/astrbot_plugin_media_parser)（AGPL-3.0），但**解析层为本插件独立实现，未复制其代码**，本插件仍为 MIT。
 * **依赖与版本**：`requirements.txt` 增加 `typst>=0.13`；插件版本升至 1.6.0，AstrBot 内部插件标识 `astrbot_plugin_ncm_player` 与数据目录名保持不变，已有安装无需迁移。
-* **验证**：新增链接解析（15 项）、自动解析与 Typst 回落（12 项）、Typst 端到端渲染（7 项）测试，单测共 66 项通过、1 项真实 Release 下载测试跳过；另以真实网易云接口验证歌曲、歌单、热评与三张卡的完整链路。
+* **验证**：新增链接解析（20 项）、自动解析与 Typst 回落（12 项）、Typst 端到端渲染（7 项）测试，单测共 75 项通过、1 项真实 Release 下载测试跳过；另以真实网易云接口验证歌曲、歌单、热评与三张卡的完整链路。
+* **🐛 修复安装阶段 ImportError**：v1.6.0 首次发布时写了 `from astrbot.api.event import EventMessageType`，但真实 AstrBot 的 `astrbot.api.event` 只导出 `AstrMessageEvent`、`MessageChain` 等 6 个名字，**不含** `EventMessageType`（它在官方 `astrbot.api.event.filter` 子包里），插件因此在安装阶段直接失败、装不上。现改为从 `astrbot.api.event.filter` 导入并带回退，兼容 AstrBot v4.0.0 至今各版本。
+* **防回归**：测试桩改为**照搬真实 AstrBot 的导出结构**（`astrbot.api.event` 只有那 6 个名字，`filter` 是子模块），并新增宿主 API 表面检查与「在真实导出结构下加载插件」的测试——插件若再 import 宿主并不导出的名字，会在测试阶段就失败，而不是等到用户安装时。
 
 ## [v1.5.2] - 2026-11-23 - 仓库迁移过渡版
 

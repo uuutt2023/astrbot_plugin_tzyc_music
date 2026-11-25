@@ -243,3 +243,151 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             metadata["repo"], "https://github.com/TZYCeng/astrbot_plugin_tzyc_music"
         )
+
+
+class HostApiSurfaceTests(unittest.TestCase):
+    """插件只能 import 宿主**真实导出**的名字。
+
+    v1.6.0 首次发布时写了 ``from astrbot.api.event import EventMessageType``，
+    但真实 AstrBot 的 ``astrbot.api.event`` 并不导出它（只有
+    AstrMessageEvent / MessageChain 等 6 个名字），插件因此在安装阶段
+    直接 ImportError、根本装不上。这个测试把那条边界钉死。
+    """
+
+    # 与 astrbot/api/event/__init__.py 的 __all__ 保持一致
+    ASTRBOT_API_EVENT_EXPORTS = {
+        "AstrMessageEvent",
+        "CommandResult",
+        "EventResultType",
+        "MessageChain",
+        "MessageEventResult",
+        "ResultContentType",
+    }
+    # filter 是 astrbot.api.event 的**子模块**（不在 __all__ 里，但
+    # `from astrbot.api.event import filter` 是 Python 允许的用法）
+    ASTRBOT_API_EVENT_SUBMODULES = {"filter"}
+
+    def _imported_names(self) -> set[str]:
+        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(
+            encoding="utf-8"
+        )
+        tree = ast.parse(source)
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.startswith("astrbot."):
+                    names.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("astrbot."):
+                        names.add(alias.name.rsplit(".", 1)[-1])
+        return names
+
+    def test_only_imports_names_the_host_actually_exports(self):
+        """从 astrbot.api.event 直接 import 的名字，必须在它的 __all__ 里。"""
+        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(
+            encoding="utf-8"
+        )
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "astrbot.api.event":
+                for alias in node.names:
+                    self.assertTrue(
+                        alias.name in self.ASTRBOT_API_EVENT_EXPORTS
+                        or alias.name in self.ASTRBOT_API_EVENT_SUBMODULES,
+                        f"astrbot.api.event 不导出 {alias.name}，插件会装不上",
+                    )
+
+    def test_event_message_type_is_importable_from_the_real_host(self):
+        """EventMessageType 必须从真实存在的位置导入。"""
+        from .support import main_module
+
+        self.assertTrue(hasattr(main_module, "EventMessageType"))
+
+    def test_filter_submodule_is_importable(self):
+        """filter 是子模块：from astrbot.api.event import filter 必须可用。"""
+        from astrbot.api.event import filter
+
+        for attr in ("command", "regex", "llm_tool", "permission_type"):
+            self.assertTrue(hasattr(filter, attr), f"filter 缺少 {attr}")
+
+    def test_plugin_loads_under_real_host_export_surface(self):
+        """在「真实 AstrBot 导出结构」的宿主下，插件必须能加载。
+
+        这里不用测试桩（桩里我们会顺手补上缺的名字，掩盖问题），
+        而是照着 astrbot/api/event/__init__.py 的真实 __all__ 搭一个最小宿主，
+        再把插件当包加载——只要插件 import 了宿主并不导出的名字，
+        就会在这一步 ImportError，和真实安装时一样。
+        """
+        import importlib.util
+        import sys
+        import types
+
+        root = Path(__file__).resolve().parents[1]
+
+        def make(name, **attrs):
+            module = types.ModuleType(name)
+            module.__dict__.update(attrs)
+            sys.modules[name] = module
+            return module
+
+        def decorator(*args, **kwargs):
+            return lambda target: target
+
+        api_event = make(
+            "astrbot.api.event",
+            AstrMessageEvent=object,
+            __all__=sorted(self.ASTRBOT_API_EVENT_EXPORTS),
+        )
+        # filter 是子模块：不在 api.event.__all__ 里，但可以被 import
+        api_event.filter = make(
+            "astrbot.api.event.filter",
+            command=decorator,
+            permission_type=decorator,
+            llm_tool=decorator,
+            regex=decorator,
+            event_message_type=decorator,
+            PermissionType=types.SimpleNamespace(ADMIN="admin"),
+            EventMessageType=types.SimpleNamespace(ALL="all"),
+        )
+        make("astrbot")
+        make(
+            "astrbot.api",
+            logger=types.SimpleNamespace(
+                warning=lambda *a: None, error=lambda *a: None
+            ),
+            AstrBotConfig=dict,
+        )
+        make(
+            "astrbot.api.message_components",
+            **{k: object for k in ["Image", "Plain", "Record", "Node", "Nodes"]},
+        )
+        make(
+            "astrbot.api.star",
+            Star=object,
+            StarTools=object,
+            Context=object,
+            register=decorator,
+        )
+        make("astrbot.core")
+        make("astrbot.core.utils")
+        make(
+            "astrbot.core.utils.session_waiter",
+            SessionController=object,
+            session_waiter=decorator,
+        )
+
+        package = "probe_host_plugin"
+        make(package, __path__=[str(root)])
+        spec = importlib.util.spec_from_file_location(
+            f"{package}.main", root / "main.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[f"{package}.main"] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            for name in list(sys.modules):
+                if name == package or name.startswith(f"{package}."):
+                    del sys.modules[name]
+        self.assertTrue(hasattr(module.NcmPlayerPlugin, "auto_parse"))
